@@ -1,0 +1,8 @@
+streamlit
+openai>=1.6.0
+flake8
+pytest
+pytesseract
+pillow
+watchdog
+python-dotenv
