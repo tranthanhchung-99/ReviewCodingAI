@@ -1,74 +1,71 @@
-# AI Code Reviewer
+# 💬 BUG BUSTERS
 
-Ứng dụng review code tự động bằng Azure OpenAI, hỗ trợ kiểm tra coding convention, phân tích bảo mật, sinh test case và đa ngôn ngữ (Việt/Anh).  
-Giao diện thao tác dễ dùng, cho phép tải lên code, ZIP hoặc ảnh OCR để review, hỏi đáp trực tiếp với AI.
-
----
-
-## 1. Cấu trúc thư mục
-ai-code-reviewer/ 
-├── main.py # File chạy chính, giao diện Streamlit 
-├── utils.py # Hàm tiện ích xử lý code, OCR, gọi OpenAI 
-├── LANGUAGES.py # Module đa ngôn ngữ cho giao diện 
-├── .env # Thông tin API key và endpoint Azure OpenAI 
-├── README.md # Hướng dẫn sử dụng chi tiết
+Ứng dụng **Bug Busters** giúp bạn **phân tích code tự động bằng Azure OpenAI**, hỗ trợ:
+- Kiểm tra **coding convention**
+- Phân tích **bảo mật**
+- Sinh **test case**
+- Hỗ trợ **đa ngôn ngữ (Việt/Anh)**
+- Nhận diện code trong **ảnh OCR**
+- Giao diện đẹp, dễ dùng với **Streamlit**
 
 ---
 
-## 2. Hướng dẫn cài môi trường
+🧠 Tính năng nổi bật
 
-	### Bước 1: Cài đặt Python
-
-	- Yêu cầu Python >= 3.9
-	- Kiểm tra bằng lệnh:
-
-	### Bước 2: Clone mã nguồn
-	git clone https://github.com/yourname/ai-code-reviewer.git cd ai-code-reviewer
-
-	### Bước 3: Cài đặt các thư viện cần thiết
-	pip install streamlit openai python-dotenv pillow pytesseract
-	> Nếu chạy trên Windows, cần cài thêm Tesseract OCR: [Download tại đây](https://github.com/tesseract-ocr/tesseract)  
-	> Nếu chạy trên Linux/macOS, dùng lệnh:  
-	> ```
-	> sudo apt-get install tesseract-ocr
-	> ```
-
-	### Bước 4: Tạo file `.env`
-	Thay bằng endpoint và API Key thực tế từ Azure OpenAI Portal.
+| Tính năng         | Mô tả                                            |
+| ----------------- | ------------------------------------------------ |
+| 🔍 Review Code    | Phân tích code chi tiết bằng Azure OpenAI        |
+| 🧠 Linter         | Tự động chạy flake8 để phát hiện lỗi cú pháp     |
+| 🖼️ OCR           | Đọc text từ hình ảnh code (PNG, JPG)             |
+| 🌐 Đa ngôn ngữ    | Giao diện Tiếng Việt & English                   |
+| 🧪 Sinh Test Case | Tự động tạo test cases hữu ích                   |
+| 💬 Chat           | Hỏi AI về lỗi, logic hoặc đề xuất cải thiện code |
 
 ---
 
-## 3. Chạy ứng dụng
+💻 Hướng dẫn thao tác trên giao diện
 
-```bash
-streamlit run main.py
+🔧 Sidebar
+Ngôn ngữ / Language → Chọn Tiếng Việt hoặc English
 
-4. Hướng dẫn thao tác trên giao diện
+Upload file → Chọn file .py, .js, .java, .ts, .zip, hoặc ảnh .png/.jpg
 
-Sidebar
-Chọn ngôn ngữ: Tiếng Việt hoặc English.
-Upload file: Chọn file code (.py, .js, .java, .ts), ZIP hoặc ảnh (PNG, JPG).
-Reviewer Mode: Chọn kiểu review:
-Mentor: Giải thích dễ hiểu
-Senior Dev: Phân tích chuyên sâu
-Security Expert: Phân tích bảo mật
-Style Checker: Kiểm tra format code
+Reviewer Mode → Chọn kiểu review:
+👨‍🏫 Mentor: Giải thích dễ hiểu
+🧠 Senior Dev: Phân tích chuyên sâu
+🛡️ Security Expert: Tập trung vào bảo mật
+🧹 Style Checker: Kiểm tra format code
 
 Các nút chức năng:
-Bắt đầu Review: Gửi code lên AI để phân tích, nhận kết quả review.
-Xóa Chat: Xóa toàn bộ lịch sử chat, review hiện tại.
-Sinh Test Case: Sau khi review, nhấn để AI sinh bộ test case cho code.
+▶️ Bắt đầu Review — Gửi code lên AI để phân tích
+🧹 Xóa Chat — Xóa toàn bộ lịch sử chat
+🧪 Sinh Test Case — Sinh test case dựa trên code đã review
 
-Tab Chat
-Hiển thị lịch sử chat giữa bạn và AI.
-Có thể nhập câu hỏi vào khung chat để hỏi về lỗi, giải thích code, yêu cầu gợi ý fix, hoặc bất kỳ vấn đề nào liên quan đến code vừa review.
+---
 
-Tab Test Cases
-Hiển thị các test case đã sinh ra cho code của bạn.
-Có thể tải về file .json các test case để sử dụng cho dự án thực tế.
+## 🗂️ Cấu trúc thư mục dự án
 
-Kết quả Review
-Khi review hoàn tất, sẽ hiển thị:
-Tóm tắt kết quả review từng file.
-Danh sách lỗi/phân tích, có thể mở rộng xem chi tiết.
-Nếu AI gợi ý code đã refactor/sửa, sẽ hiển thị song song code gốc và code đề xuất.
+REVIEWCODINGAI/
+└── BugBusters/
+├── src/
+│ ├── init.py
+│ └── main.py # File chạy chính, giao diện Streamlit
+├── utils/
+│ ├── init.py
+│ ├── utils.py # Hàm tiện ích xử lý code, OCR, gọi OpenAI
+│ └── LANGUAGES.py # Module đa ngôn ngữ cho giao diện
+├── .env # Thông tin API key và endpoint Azure OpenAI
+├── markdown.py # (Tuỳ chọn) module xử lý Markdown nếu có
+└── setup_env.txt # File ghi chú môi trường cài đặt
+└── README.md
+
+## ⚙️ Hướng dẫn cài môi trường
+
+Run bash
+pip install streamlit openai python-dotenv pillow pytesseract flake8 pytest watchdog
+
+## ⚙️ Chạy ứng dụng
+
+Set up tài khoản vào file .env
+Run bash
+streamlit run BugBusters/src/main.py
