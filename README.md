@@ -26,19 +26,27 @@
 💻 Hướng dẫn thao tác trên giao diện
 
 🔧 Sidebar
+
 Ngôn ngữ / Language → Chọn Tiếng Việt hoặc English
 
 Upload file → Chọn file .py, .js, .java, .ts, .zip, hoặc ảnh .png/.jpg
 
 Reviewer Mode → Chọn kiểu review:
+
 👨‍🏫 Mentor: Giải thích dễ hiểu
+
 🧠 Senior Dev: Phân tích chuyên sâu
+
 🛡️ Security Expert: Tập trung vào bảo mật
+
 🧹 Style Checker: Kiểm tra format code
 
 Các nút chức năng:
+
 ▶️ Bắt đầu Review — Gửi code lên AI để phân tích
+
 🧹 Xóa Chat — Xóa toàn bộ lịch sử chat
+
 🧪 Sinh Test Case — Sinh test case dựa trên code đã review
 
 ---
