@@ -1,4 +1,4 @@
-# Tổng quan AI Code Reviewer
+# Tổng quan Bug Busters
 
 ## 1. Tính năng chính
 
@@ -57,12 +57,19 @@
 ---
 
 ## 4. Cấu trúc thư mục dự án
-ai-code-reviewer/ 
-├── main.py # File chạy chính, giao diện Streamlit 
-├── utils.py # Hàm tiện ích xử lý code, OCR, gọi OpenAI 
-├── LANGUAGES.py # Module đa ngôn ngữ cho giao diện 
-├── .env # Thông tin API key và endpoint Azure OpenAI 
-├── README.md # Hướng dẫn sử dụng chi tiết
+REVIEWCODINGAI/
+└── BugBusters/
+├── src/
+│ ├── init.py
+│ └── main.py # File chạy chính, giao diện Streamlit
+├── utils/
+│ ├── init.py
+│ ├── utils.py # Hàm tiện ích xử lý code, OCR, gọi OpenAI
+│ └── LANGUAGES.py # Module đa ngôn ngữ cho giao diện
+├── .env # Thông tin API key và endpoint Azure OpenAI
+├── markdown.py # (Tuỳ chọn) module xử lý Markdown nếu có
+└── setup_env.txt # File ghi chú môi trường cài đặt
+└── README.md
 
 ---
 

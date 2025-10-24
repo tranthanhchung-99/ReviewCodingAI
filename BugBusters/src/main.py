@@ -3,15 +3,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import tempfile
 import zipfile
-import subprocess
 from pathlib import Path
 import streamlit as st
-from openai import AzureOpenAI
+from openai import OpenAI
 from dotenv import load_dotenv
-from PIL import Image
-import pytesseract
 import json
 
+# ========== Load utils ==========
 from utils.utils import (
     chunk_text,
     safe_read_text,
@@ -25,15 +23,17 @@ from utils.LANGUAGES import LANGUAGES
 # CONFIG
 # =========================
 load_dotenv()
-client = AzureOpenAI(
-    api_version="2024-07-01-preview",
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+
+# ⚠️ Sử dụng proxy STU Platform thay vì AzureOpenAI
+client = OpenAI(
+    base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),  # ví dụ: https://aiportalapi.stu-platform.live/jpe/
+    api_key=os.getenv("AZURE_OPENAI_API_KEY")
 )
+
 MODEL = "gpt-4o-mini"
 MAX_FILE_SIZE = 100_000  # ký tự
 
-st.set_page_config(page_title="💬 AI Code Reviewer", layout="wide")
+st.set_page_config(page_title="💬 Bug Busters", layout="wide")
 
 # =========================
 # LANGUAGE
@@ -106,17 +106,16 @@ if clear_btn:
 # =========================
 if run_btn and upload:
     with st.spinner(T["processing_file"]):
-        tmp = Path(tempfile.mkdtemp(prefix="ai-review-"))
+        tmp = Path(tempfile.mkdtemp(prefix="bugbusters-"))
         files_to_review = []
         extracted_texts = []
         file_ext = upload.name.split('.')[-1]
 
-        # Nếu là ảnh: dùng OCR để đọc nội dung text
+        # Nếu là ảnh: dùng OCR
         if upload.type.startswith("image/"):
             text = extract_text_from_image(upload)
             extracted_texts.append({"filename": upload.name, "content": text})
             st.success(T["ocr_success"])
-
         else:
             save_path = tmp / upload.name
             with open(save_path, "wb") as f:
@@ -132,7 +131,7 @@ if run_btn and upload:
 
         results = []
         for f in files_to_review or extracted_texts:
-            if isinstance(f, dict):  # trường hợp ảnh
+            if isinstance(f, dict):  # ảnh OCR
                 fname = f["filename"]
                 content = f["content"]
                 linter_out = "(Không áp dụng cho ảnh)"
@@ -145,12 +144,12 @@ if run_btn and upload:
                     content = content[:MAX_FILE_SIZE]
                 st.code(content[:1000], language=file_ext)
 
-                # Nếu là Python => chạy linter flake8
+                # Nếu là Python => chạy flake8
                 if f.suffix == ".py":
                     _, out, err = run_command(f"flake8 {f}", cwd=tmp)
                     linter_out = (out + "\n" + err).strip() or T["no_issue"]
 
-            # Chia nhỏ code nếu quá lớn
+            # Chia nhỏ code nếu dài
             chunks = chunk_text(content, 3000)
             review_chunk_results = []
             for idx, chunk in enumerate(chunks):
@@ -172,6 +171,7 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ])
+
                 try:
                     parsed = json.loads(response)
                 except:
@@ -186,7 +186,7 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
         })
 
 # =========================
-# HIỂN THỊ KẾT QUẢ REVIEW
+# HIỂN THỊ REVIEW
 # =========================
 if st.session_state.review_results:
     for r in st.session_state.review_results:
@@ -209,19 +209,20 @@ if st.session_state.review_results:
                     st.code(review['suggested_code'], language=file_ext)
 
 # =========================
-# CHAT INPUT
+# CHAT
 # =========================
 user_input = st.chat_input(T["ask_ai"])
-
 if user_input:
     st.session_state.chat_history.append({"role": "user", "content": user_input})
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(user_input)
+
     context_text = ""
     if st.session_state.review_results:
         for r in st.session_state.review_results[:3]:
             ctx = json.dumps(r, ensure_ascii=False)[:1500]
             context_text += f"\n{ctx}\n"
+
     messages = [
         {"role": "system", "content": "You are a friendly AI code reviewer."},
         {"role": "user", "content": f"Previous review context:\n{context_text}\nUser query:\n{user_input}"}
@@ -232,7 +233,7 @@ if user_input:
         st.markdown(answer)
 
 # =========================
-# GENERATE TEST CASES
+# TEST CASE GENERATION
 # =========================
 if generate_tests_btn:
     if not st.session_state.review_results:
@@ -243,6 +244,7 @@ if generate_tests_btn:
             for r in st.session_state.review_results:
                 if "file" in r and "review" in r:
                     code_context += f"File: {r['file']}\n{r['review'][0].get('summary', '')[:1000]}\n"
+
             prompt = f"""
 Generate detailed and practical test cases for the reviewed code below.
 Include both **normal** and **edge cases**, and format the result as a JSON list:
@@ -256,6 +258,7 @@ Include both **normal** and **edge cases**, and format the result as a JSON list
 Code context:
 {code_context}
 """
+
             result = summarize_with_llm([
                 {"role": "system", "content": "You are an expert QA engineer specializing in software test case design."},
                 {"role": "user", "content": prompt}

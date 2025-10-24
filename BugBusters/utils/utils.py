@@ -1,84 +1,90 @@
-import subprocess
-from pathlib import Path
-from PIL import Image
-import pytesseract
 import os
-from openai import AzureOpenAI
+import subprocess
+import pytesseract
+from openai import OpenAI
 from dotenv import load_dotenv
+from PIL import Image
 
-# =========================
-# Đọc file text an toàn
-# =========================
-def safe_read_text(path: Path):
-    """
-    Đọc file text an toàn, tránh crash khi gặp ký tự lỗi.
-    """
-    return path.read_text(encoding="utf-8", errors="ignore")
+# =========================================
+# CONFIG
+# =========================================
+load_dotenv()
 
+# ⚙️ Cấu hình client cho STU Platform proxy
+# Sử dụng base_url thay vì azure_endpoint
+client = OpenAI(
+    base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+)
 
-# =========================
-# Chia nhỏ text cho mô hình AI
-# =========================
-def chunk_text(text, max_len=3000):
-    """
-    Chia nhỏ chuỗi text thành nhiều đoạn nhỏ để gửi lên model.
-    """
-    return [text[i:i + max_len] for i in range(0, len(text), max_len)]
+MODEL = "gpt-4o-mini"  # hoặc đổi thành model mà STU server hỗ trợ
 
+# =========================================
+# HÀM CHIA NHỎ TEXT (để gửi lên LLM)
+# =========================================
+def chunk_text(text: str, chunk_size: int = 3000):
+    """Chia nhỏ đoạn văn bản để xử lý với LLM."""
+    text = text or ""
+    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
-# =========================
-# Chạy lệnh hệ thống (ví dụ flake8)
-# =========================
-def run_command(cmd, cwd=None, timeout=20):
-    """
-    Chạy lệnh hệ thống, trả về (exit_code, stdout, stderr)
-    """
+# =========================================
+# HÀM ĐỌC FILE AN TOÀN
+# =========================================
+def safe_read_text(file_path):
+    """Đọc nội dung text từ file (utf-8, fallback latin-1)."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        with open(file_path, "r", encoding="latin-1") as f:
+            return f.read()
+    except Exception as e:
+        return f"⚠️ Lỗi khi đọc file {file_path}: {e}"
+
+# =========================================
+# HÀM CHẠY LỆNH HỆ THỐNG
+# =========================================
+def run_command(command, cwd=None):
+    """Chạy một lệnh shell (ví dụ: flake8) và trả về (exit_code, stdout, stderr)."""
     try:
         result = subprocess.run(
-            cmd,
-            cwd=cwd,
+            command,
             shell=True,
+            cwd=cwd,
             capture_output=True,
-            text=True,
-            timeout=timeout
+            text=True
         )
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
+        return result.returncode, result.stdout, result.stderr
     except Exception as e:
-        return 1, "", str(e)
+        return -1, "", str(e)
 
-
-# =========================
-# Gọi Azure OpenAI (GPT)
-# =========================
+# =========================================
+# GỌI LLM (STU Platform Proxy / OpenAI API)
+# =========================================
 def summarize_with_llm(messages):
     """
-    Gửi danh sách message đến Azure OpenAI và nhận phản hồi.
+    Gửi danh sách messages (list of dict) đến proxy STU Platform,
+    trả về nội dung phản hồi dạng string.
     """
-    load_dotenv()
-    client = AzureOpenAI(
-        api_version="2024-07-01-preview",
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    )
-    MODEL = "gpt-4o-mini"
     try:
-        resp = client.chat.completions.create(
+        response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=800,
-            temperature=0.0,
+            temperature=0.3,
+            max_tokens=2000
         )
-        return resp.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"[ERROR calling Azure OpenAI]: {e}"
+        return f"⚠️ Lỗi khi gọi LLM: {e}"
 
-
-# =========================
-# OCR: Trích xuất text từ ảnh
-# =========================
-def extract_text_from_image(img_file):
-    """
-    Dùng pytesseract để đọc text từ ảnh (PNG, JPG, JPEG...).
-    """
-    img = Image.open(img_file)
-    return pytesseract.image_to_string(img, lang="eng")
+# =========================================
+# TRÍCH XUẤT TEXT TỪ ẢNH (OCR)
+# =========================================
+def extract_text_from_image(uploaded_image):
+    """Dùng OCR để trích xuất text từ ảnh."""
+    try:
+        image = Image.open(uploaded_image)
+        text = pytesseract.image_to_string(image, lang="eng+vie")
+        return text.strip()
+    except Exception as e:
+        return f"⚠️ Lỗi OCR: {e}"
