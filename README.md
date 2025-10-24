@@ -54,17 +54,29 @@ Các nút chức năng:
 ## 🗂️ Cấu trúc thư mục dự án
 
 REVIEWCODINGAI/
+
 └── BugBusters/
+
 ├── src/
+
 │ ├── init.py
+
 │ └── main.py # File chạy chính, giao diện Streamlit
+
 ├── utils/
+
 │ ├── init.py
+
 │ ├── utils.py # Hàm tiện ích xử lý code, OCR, gọi OpenAI
+
 │ └── LANGUAGES.py # Module đa ngôn ngữ cho giao diện
+
 ├── .env # Thông tin API key và endpoint Azure OpenAI
+
 ├── markdown.py # (Tuỳ chọn) module xử lý Markdown nếu có
+
 └── setup_env.txt # File ghi chú môi trường cài đặt
+
 └── README.md
 
 ## ⚙️ Hướng dẫn cài môi trường
