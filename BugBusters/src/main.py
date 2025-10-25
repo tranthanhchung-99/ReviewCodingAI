@@ -5,7 +5,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 import streamlit as st
-from openai import OpenAI
+from openai import AzureOpenAI
 from dotenv import load_dotenv
 import json
 
@@ -25,10 +25,12 @@ from utils.LANGUAGES import LANGUAGES
 load_dotenv()
 
 # ⚠️ Sử dụng proxy STU Platform thay vì AzureOpenAI
-client = OpenAI(
-    base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),  # ví dụ: https://aiportalapi.stu-platform.live/jpe/
-    api_key=os.getenv("AZURE_OPENAI_API_KEY")
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),  # ví dụ: https://aiportalapi.stu-platform.live/jpe/
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-02-01"
 )
+print()
 
 MODEL = "gpt-4o-mini"
 MAX_FILE_SIZE = 100_000  # ký tự
@@ -69,6 +71,18 @@ generate_tests_btn = st.sidebar.button(T["generate_test"], use_container_width=T
 # =========================
 # TAB VIEW
 # =========================
+st.markdown("""
+    <style>
+    div[role="tablist"] {
+        position: fixed !important;
+        top:50px;
+        background-color: white;
+        z-index: 9999;
+        padding-top: 10px;
+        width: 100%
+    }
+    </style>
+""", unsafe_allow_html=True)
 tab1, tab2 = st.tabs([T["chat_tab"], T["testcase_tab"]])
 
 with tab1:
