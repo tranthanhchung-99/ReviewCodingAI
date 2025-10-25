@@ -90,6 +90,29 @@ with tab1:
         avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
+    # =========================
+    # HIỂN THỊ REVIEW
+    # =========================
+    if st.session_state.review_results:
+        for r in st.session_state.review_results:
+            st.markdown(f"### 📄 {T['file']}: {r['file']}")
+            for idx, review in enumerate(r["review"], 1):
+                st.markdown(f"**{T['chunk']} {idx}:** {review.get('summary', '')}")
+                if review.get('issues'):
+                    for i, iss in enumerate(review['issues'], 1):
+                        with st.expander(f"{T['error']} #{i}"):
+                            st.write(iss)
+                else:
+                    st.success(T["no_issue"])
+                if review.get('suggested_code'):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(T["original_code"])
+                        st.code(content[:1000], language=file_ext)
+                    with col2:
+                        st.markdown(T["suggested_code"])
+                        st.code(review['suggested_code'], language=file_ext)
+
 
 with tab2:
     st.markdown(T["testcase_history"])
@@ -198,29 +221,30 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
             "role": "assistant",
             "content": T["review_done"]
         })
+        st.rerun()
+# # =========================
+# # HIỂN THỊ REVIEW
+# # =========================
+# if st.session_state.review_results:
+#     for r in st.session_state.review_results:
+#         st.markdown(f"### 📄 {T['file']}: {r['file']}")
+#         for idx, review in enumerate(r["review"], 1):
+#             st.markdown(f"**{T['chunk']} {idx}:** {review.get('summary', '')}")
+#             if review.get('issues'):
+#                 for i, iss in enumerate(review['issues'], 1):
+#                     with st.expander(f"{T['error']} #{i}"):
+#                         st.write(iss)
+#             else:
+#                 st.success(T["no_issue"])
+#             if review.get('suggested_code'):
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     st.markdown(T["original_code"])
+#                     st.code(content[:1000], language=file_ext)
+#                 with col2:
+#                     st.markdown(T["suggested_code"])
+#                     st.code(review['suggested_code'], language=file_ext)
 
-# =========================
-# HIỂN THỊ REVIEW
-# =========================
-if st.session_state.review_results:
-    for r in st.session_state.review_results:
-        st.markdown(f"### 📄 {T['file']}: {r['file']}")
-        for idx, review in enumerate(r["review"], 1):
-            st.markdown(f"**{T['chunk']} {idx}:** {review.get('summary', '')}")
-            if review.get('issues'):
-                for i, iss in enumerate(review['issues'], 1):
-                    with st.expander(f"{T['error']} #{i}"):
-                        st.write(iss)
-            else:
-                st.success(T["no_issue"])
-            if review.get('suggested_code'):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(T["original_code"])
-                    st.code(content[:1000], language=file_ext)
-                with col2:
-                    st.markdown(T["suggested_code"])
-                    st.code(review['suggested_code'], language=file_ext)
 
 # =========================
 # CHAT
