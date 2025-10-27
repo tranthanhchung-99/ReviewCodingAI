@@ -4,6 +4,7 @@ import pytesseract
 from openai import OpenAI
 from dotenv import load_dotenv
 from PIL import Image
+from utils.chunk_utils import chunk_text
 
 # =========================================
 # CONFIG
@@ -18,14 +19,6 @@ client = OpenAI(
 )
 
 MODEL = "gpt-4o-mini"  # hoặc đổi thành model mà STU server hỗ trợ
-
-# =========================================
-# HÀM CHIA NHỎ TEXT (để gửi lên LLM)
-# =========================================
-def chunk_text(text: str, chunk_size: int = 3000):
-    """Chia nhỏ đoạn văn bản để xử lý với LLM."""
-    text = text or ""
-    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 # =========================================
 # HÀM ĐỌC FILE AN TOÀN
