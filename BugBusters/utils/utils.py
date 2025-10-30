@@ -10,28 +10,44 @@ from PIL import Image
 # =========================================
 load_dotenv()
 
-# ⚙️ Cấu hình client cho STU Platform proxy
-# Sử dụng base_url thay vì azure_endpoint
+# ⚙️ Client cho STU Platform proxy
 client = OpenAI(
     base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
 )
-
-MODEL = "gpt-4o-mini"  # hoặc đổi thành model mà STU server hỗ trợ
+MODEL = "gpt-4o-mini"  # hoặc model mà server của bạn hỗ trợ
 
 # =========================================
-# HÀM CHIA NHỎ TEXT (để gửi lên LLM)
+# CHUNK TEXT / CODE
 # =========================================
-def chunk_text(text: str, chunk_size: int = 3000):
-    """Chia nhỏ đoạn văn bản để xử lý với LLM."""
+def _chunk_fallback(text: str, chunk_size: int = 3000):
+    """Fallback chia text theo độ dài nếu không có tree-sitter."""
     text = text or ""
     return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
+
+# ✅ Ưu tiên dùng tree-sitter trong utils/chunk_utils.py
+try:
+    from utils.chunk_utils import chunk_text as _chunk_by_language
+
+    def chunk_text(text: str, ext: str = ".py", max_chunk_size: int = 3000):
+        """Chia code theo ngôn ngữ nếu có tree-sitter; fallback nếu lỗi."""
+        try:
+            return _chunk_by_language(text, ext, max_chunk_size)
+        except Exception as e:
+            print(f"⚠️ Tree-sitter lỗi ({ext}): {e} → fallback chia thô.")
+            return _chunk_fallback(text, max_chunk_size)
+except ImportError:
+    def chunk_text(text: str, ext: str = ".py", max_chunk_size: int = 3000):
+        """Fallback nếu không import được chunk_utils."""
+        return _chunk_fallback(text, max_chunk_size)
+
+
 # =========================================
-# HÀM ĐỌC FILE AN TOÀN
+# FILE HANDLING
 # =========================================
-def safe_read_text(file_path):
-    """Đọc nội dung text từ file (utf-8, fallback latin-1)."""
+def safe_read_text(file_path: str) -> str:
+    """Đọc nội dung file text (utf-8, fallback latin-1)."""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -41,31 +57,27 @@ def safe_read_text(file_path):
     except Exception as e:
         return f"⚠️ Lỗi khi đọc file {file_path}: {e}"
 
+
 # =========================================
-# HÀM CHẠY LỆNH HỆ THỐNG
+# SHELL COMMANDS
 # =========================================
-def run_command(command, cwd=None):
-    """Chạy một lệnh shell (ví dụ: flake8) và trả về (exit_code, stdout, stderr)."""
+def run_command(command: str, cwd: str = None):
+    """Chạy một lệnh hệ thống và trả về (exit_code, stdout, stderr)."""
     try:
         result = subprocess.run(
-            command,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True
+            command, shell=True, cwd=cwd,
+            capture_output=True, text=True
         )
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
         return -1, "", str(e)
 
+
 # =========================================
-# GỌI LLM (STU Platform Proxy / OpenAI API)
+# LLM CALL (STU Proxy / OpenAI API)
 # =========================================
-def summarize_with_llm(messages):
-    """
-    Gửi danh sách messages (list of dict) đến proxy STU Platform,
-    trả về nội dung phản hồi dạng string.
-    """
+def summarize_with_llm(messages: list[dict]):
+    """Gửi danh sách messages đến LLM qua STU proxy."""
     try:
         response = client.chat.completions.create(
             model=MODEL,
@@ -77,11 +89,12 @@ def summarize_with_llm(messages):
     except Exception as e:
         return f"⚠️ Lỗi khi gọi LLM: {e}"
 
+
 # =========================================
-# TRÍCH XUẤT TEXT TỪ ẢNH (OCR)
+# OCR (TỪ ẢNH)
 # =========================================
 def extract_text_from_image(uploaded_image):
-    """Dùng OCR để trích xuất text từ ảnh."""
+    """Trích xuất text từ ảnh bằng pytesseract (Eng + Vie)."""
     try:
         image = Image.open(uploaded_image)
         text = pytesseract.image_to_string(image, lang="eng+vie")

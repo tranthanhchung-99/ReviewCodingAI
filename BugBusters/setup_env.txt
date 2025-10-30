@@ -1,3 +1,4 @@
+# Core dependencies
 streamlit
 openai>=1.6.0
 flake8
@@ -6,3 +7,7 @@ pytesseract
 pillow
 watchdog
 python-dotenv
+
+# Tree-sitter for multi-language code parsing
+tree-sitter==0.20.4
+tree-sitter-languages==1.10.2
