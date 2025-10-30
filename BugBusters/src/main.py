@@ -1,36 +1,41 @@
 import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from pathlib import Path
 
+# =========================================
+# 🔧 FIX: thêm thư mục gốc dự án vào PYTHONPATH
+# =========================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+print("✅ Added to sys.path:", BASE_DIR)
+
+# =========================================
+# IMPORTS
+# =========================================
 import tempfile
 import zipfile
-from pathlib import Path
+import json
 import streamlit as st
 from openai import AzureOpenAI
 from dotenv import load_dotenv
-import json
 
-# ========== Load utils ==========
-from utils.utils import (
-    chunk_text,
-    safe_read_text,
-    run_command,
-    summarize_with_llm,
-    extract_text_from_image
-)
+# ✅ Import từ thư mục utils
+from utils.chunk_utils import chunk_text
+from utils.utils import safe_read_text, run_command, summarize_with_llm, extract_text_from_image
 from utils.LANGUAGES import LANGUAGES
+
 
 # =========================
 # CONFIG
 # =========================
 load_dotenv()
 
-# ⚠️ Sử dụng proxy STU Platform thay vì AzureOpenAI
 client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),  # ví dụ: https://aiportalapi.stu-platform.live/jpe/
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
     api_version="2024-02-01"
 )
-print()
 
 MODEL = "gpt-4o-mini"
 MAX_FILE_SIZE = 100_000  # ký tự
@@ -83,6 +88,7 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
 tab1, tab2 = st.tabs([T["chat_tab"], T["testcase_tab"]])
 
 with tab1:
@@ -90,9 +96,7 @@ with tab1:
         avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
-    # =========================
-    # HIỂN THỊ REVIEW
-    # =========================
+
     if st.session_state.review_results:
         for r in st.session_state.review_results:
             st.markdown(f"### 📄 {T['file']}: {r['file']}")
@@ -105,14 +109,7 @@ with tab1:
                 else:
                     st.success(T["no_issue"])
                 if review.get('suggested_code'):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(T["original_code"])
-                        st.code(content[:1000], language=file_ext)
-                    with col2:
-                        st.markdown(T["suggested_code"])
-                        st.code(review['suggested_code'], language=file_ext)
-
+                    st.code(review['suggested_code'], language="python")
 
 with tab2:
     st.markdown(T["testcase_history"])
@@ -148,7 +145,7 @@ if run_btn and upload:
         extracted_texts = []
         file_ext = upload.name.split('.')[-1]
 
-        # Nếu là ảnh: dùng OCR
+        # 🖼️ Nếu là ảnh: dùng OCR
         if upload.type.startswith("image/"):
             text = extract_text_from_image(upload)
             extracted_texts.append({"filename": upload.name, "content": text})
@@ -157,11 +154,12 @@ if run_btn and upload:
             save_path = tmp / upload.name
             with open(save_path, "wb") as f:
                 f.write(upload.getbuffer())
+
             if upload.name.endswith(".zip"):
                 with zipfile.ZipFile(save_path, "r") as z:
                     z.extractall(tmp)
                 for p in tmp.rglob("*"):
-                    if p.suffix in {".py", ".js", ".ts", ".java"}:
+                    if p.suffix in {".py", ".js", ".ts", ".java", ".cpp", ".c", ".html", ".css"}:
                         files_to_review.append(p)
             else:
                 files_to_review.append(save_path)
@@ -181,13 +179,13 @@ if run_btn and upload:
                     content = content[:MAX_FILE_SIZE]
                 st.code(content[:1000], language=file_ext)
 
-                # Nếu là Python => chạy flake8
                 if f.suffix == ".py":
                     _, out, err = run_command(f"flake8 {f}", cwd=tmp)
                     linter_out = (out + "\n" + err).strip() or T["no_issue"]
 
-            # Chia nhỏ code nếu dài
-            chunks = chunk_text(content, 3000)
+            # ✅ Gọi chunk_text mới (Tree-sitter nếu build được, fallback nếu không)
+            chunks = chunk_text(content, ext=os.path.splitext(fname)[1])
+
             review_chunk_results = []
             for idx, chunk in enumerate(chunks):
                 prompt = f"""
@@ -214,6 +212,7 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
                 except:
                     parsed = {"summary": response}
                 review_chunk_results.append(parsed)
+
             results.append({"file": fname, "review": review_chunk_results})
 
         st.session_state.review_results = results
@@ -222,29 +221,6 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
             "content": T["review_done"]
         })
         st.rerun()
-# # =========================
-# # HIỂN THỊ REVIEW
-# # =========================
-# if st.session_state.review_results:
-#     for r in st.session_state.review_results:
-#         st.markdown(f"### 📄 {T['file']}: {r['file']}")
-#         for idx, review in enumerate(r["review"], 1):
-#             st.markdown(f"**{T['chunk']} {idx}:** {review.get('summary', '')}")
-#             if review.get('issues'):
-#                 for i, iss in enumerate(review['issues'], 1):
-#                     with st.expander(f"{T['error']} #{i}"):
-#                         st.write(iss)
-#             else:
-#                 st.success(T["no_issue"])
-#             if review.get('suggested_code'):
-#                 col1, col2 = st.columns(2)
-#                 with col1:
-#                     st.markdown(T["original_code"])
-#                     st.code(content[:1000], language=file_ext)
-#                 with col2:
-#                     st.markdown(T["suggested_code"])
-#                     st.code(review['suggested_code'], language=file_ext)
-
 
 # =========================
 # CHAT
@@ -285,14 +261,7 @@ if generate_tests_btn:
 
             prompt = f"""
 Generate detailed and practical test cases for the reviewed code below.
-Include both **normal** and **edge cases**, and format the result as a JSON list:
-[
-  {{
-    "description": "Mô tả test case",
-    "input": "...",
-    "expected_output": "..."
-  }}
-]
+Include both **normal** and **edge cases**, and format the result as a JSON list.
 Code context:
 {code_context}
 """
