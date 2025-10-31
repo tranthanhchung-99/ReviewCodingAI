@@ -7,7 +7,6 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
-
 print("✅ Added to sys.path:", BASE_DIR)
 
 # =========================================
@@ -20,11 +19,16 @@ import streamlit as st
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 
-# ✅ Import từ thư mục utils
+# ✅ Import từ utils (đã hỗ trợ OCR + Vision)
 from utils.chunk_utils import chunk_text
-from utils.utils import safe_read_text, run_command, summarize_with_llm, extract_text_from_image
+from utils.utils import (
+    safe_read_text,
+    run_command,
+    summarize_with_llm,
+    extract_text_from_image,
+    analyze_image_with_llm
+)
 from utils.LANGUAGES import LANGUAGES
-
 
 # =========================
 # CONFIG
@@ -62,7 +66,10 @@ if "test_cases" not in st.session_state:
 # SIDEBAR
 # =========================
 st.sidebar.markdown("## ⚙️ Settings")
-upload = st.sidebar.file_uploader(T["upload"], type=["zip", "py", "js", "java", "ts", "png", "jpg"])
+upload = st.sidebar.file_uploader(
+    T["upload"],
+    type=["zip", "py", "js", "java", "ts", "png", "jpg", "jpeg"]
+)
 reviewer_type = st.sidebar.selectbox("Reviewer Mode", [
     "Mentor (Giải thích dễ hiểu)",
     "Senior Dev (Phân tích chuyên sâu)",
@@ -74,7 +81,7 @@ clear_btn = st.sidebar.button(T["clear_chat"], use_container_width=True)
 generate_tests_btn = st.sidebar.button(T["generate_test"], use_container_width=True)
 
 # =========================
-# TAB VIEW
+# TAB STYLE (HEADER FIX)
 # =========================
 st.markdown("""
     <style>
@@ -89,8 +96,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# =========================
+# TAB SETUP
+# =========================
 tab1, tab2 = st.tabs([T["chat_tab"], T["testcase_tab"]])
 
+# =========================
+# TAB 1 — REVIEW / CHAT
+# =========================
 with tab1:
     for msg in st.session_state.chat_history:
         avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
@@ -111,6 +124,9 @@ with tab1:
                 if review.get('suggested_code'):
                     st.code(review['suggested_code'], language="python")
 
+# =========================
+# TAB 2 — TEST CASE
+# =========================
 with tab2:
     st.markdown(T["testcase_history"])
     if not st.session_state.test_cases:
@@ -143,14 +159,80 @@ if run_btn and upload:
         tmp = Path(tempfile.mkdtemp(prefix="bugbusters-"))
         files_to_review = []
         extracted_texts = []
-        file_ext = upload.name.split('.')[-1]
 
-        # 🖼️ Nếu là ảnh: dùng OCR
+        # 🖼️ Nếu là ảnh → OCR + Vision + phục hồi code
         if upload.type.startswith("image/"):
-            text = extract_text_from_image(upload)
-            extracted_texts.append({"filename": upload.name, "content": text})
-            st.success(T["ocr_success"])
+            st.info("🖼️ Ảnh được phát hiện — đang trích xuất nội dung...")
+
+            raw_text = extract_text_from_image(upload)
+            if not raw_text.strip():
+                st.error("⚠️ Không tìm thấy nội dung nào trong ảnh.")
+            else:
+                st.info("📄 Text OCR được trích xuất:")
+                st.code(raw_text[:800], language="markdown")
+
+            # Lưu ảnh tạm để AI vision đọc
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
+                tmp_img.write(upload.getvalue())
+                tmp_img_path = tmp_img.name
+
+            # Vision model phân tích ảnh
+            ai_analysis = analyze_image_with_llm(tmp_img_path)
+            st.info("🤖 Phân tích AI (Vision model):")
+            st.markdown(ai_analysis)
+
+            # Dùng LLM để làm sạch và khôi phục code từ OCR
+            st.info("🧩 Đang phục hồi code từ ảnh...")
+            clean_prompt = f"""
+Dưới đây là phần text được trích xuất bằng OCR từ ảnh:
+
+Hãy:
+1. Nhận diện phần code có trong nội dung (nếu có).
+2. Sửa các lỗi OCR như ký tự sai, thiếu dấu ngoặc, indent hỏng.
+3. Giữ nguyên định dạng và comment.
+4. Trả về **chỉ đoạn code sạch**, không thêm mô tả hay lời giải thích.
+"""
+            cleaned_code = summarize_with_llm([
+                {"role": "system", "content": "Bạn là chuyên gia phục hồi code từ ảnh chụp."},
+                {"role": "user", "content": clean_prompt + "\n\n" + raw_text}
+            ])
+
+            # 🔍 Đoán ngôn ngữ code và gán phần mở rộng hợp lệ
+            detected_lang = "python"
+            ext_map = {
+                "python": ".py",
+                "java": ".java",
+                "cpp": ".cpp",
+                "javascript": ".js",
+                "html": ".html"
+            }
+            lc = cleaned_code.lower()
+            if "public class" in lc or "system.out.println" in lc:
+                detected_lang = "java"
+            elif "#include" in lc or "printf(" in lc:
+                detected_lang = "cpp"
+            elif "function" in lc or "const" in lc:
+                detected_lang = "javascript"
+            elif "<html" in lc:
+                detected_lang = "html"
+
+            file_ext = ext_map.get(detected_lang, ".py")
+
+            # 💡 In ra code nhận diện được
+            st.success(f"✅ Code được nhận diện ({detected_lang}):")
+            st.code(cleaned_code, language=detected_lang)
+
+            # Thêm vào danh sách review
+            extracted_texts.append({
+                "filename": f"{upload.name}_ocr{file_ext}",
+                "content": cleaned_code
+            })
+            st.success("🎯 Code trong ảnh đã sẵn sàng để review!")
+
         else:
+            # =========================
+            # FILE CODE HOẶC ZIP
+            # =========================
             save_path = tmp / upload.name
             with open(save_path, "wb") as f:
                 f.write(upload.getbuffer())
@@ -164,9 +246,12 @@ if run_btn and upload:
             else:
                 files_to_review.append(save_path)
 
+        # =========================
+        # DUYỆT CÁC FILE VÀ REVIEW
+        # =========================
         results = []
         for f in files_to_review or extracted_texts:
-            if isinstance(f, dict):  # ảnh OCR
+            if isinstance(f, dict):  # OCR từ ảnh
                 fname = f["filename"]
                 content = f["content"]
                 linter_out = "(Không áp dụng cho ảnh)"
@@ -177,21 +262,24 @@ if run_btn and upload:
                 if len(content) > MAX_FILE_SIZE:
                     st.warning(T["file_large"].format(size=len(content)))
                     content = content[:MAX_FILE_SIZE]
-                st.code(content[:1000], language=file_ext)
+                st.code(content[:1000], language=f.suffix.replace('.', ''))
 
                 if f.suffix == ".py":
                     _, out, err = run_command(f"flake8 {f}", cwd=tmp)
                     linter_out = (out + "\n" + err).strip() or T["no_issue"]
 
-            # ✅ Gọi chunk_text mới (Tree-sitter nếu build được, fallback nếu không)
-            chunks = chunk_text(content, ext=os.path.splitext(fname)[1])
+            file_ext = os.path.splitext(fname)[1].lower()
+            if file_ext in [".png", ".jpg", ".jpeg"]:
+                chunks = [content]
+            else:
+                chunks = chunk_text(content, ext=file_ext)
 
             review_chunk_results = []
             for idx, chunk in enumerate(chunks):
                 prompt = f"""
 Bạn là reviewer code. Hãy phân tích phần {idx+1}/{len(chunks)} trong file {fname}.
 Linter output: {linter_out}
-Code:
+Code hoặc nội dung:
 {chunk}
 Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
 """
@@ -221,63 +309,3 @@ Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
             "content": T["review_done"]
         })
         st.rerun()
-
-# =========================
-# CHAT
-# =========================
-user_input = st.chat_input(T["ask_ai"])
-if user_input:
-    st.session_state.chat_history.append({"role": "user", "content": user_input})
-    with st.chat_message("user", avatar="🧑‍💻"):
-        st.markdown(user_input)
-
-    context_text = ""
-    if st.session_state.review_results:
-        for r in st.session_state.review_results[:3]:
-            ctx = json.dumps(r, ensure_ascii=False)[:1500]
-            context_text += f"\n{ctx}\n"
-
-    messages = [
-        {"role": "system", "content": "You are a friendly AI code reviewer."},
-        {"role": "user", "content": f"Previous review context:\n{context_text}\nUser query:\n{user_input}"}
-    ]
-    answer = summarize_with_llm(messages)
-    st.session_state.chat_history.append({"role": "assistant", "content": answer})
-    with st.chat_message("assistant", avatar="🤖"):
-        st.markdown(answer)
-
-# =========================
-# TEST CASE GENERATION
-# =========================
-if generate_tests_btn:
-    if not st.session_state.review_results:
-        st.warning(T["testcase_warning"])
-    else:
-        with st.spinner(T["generating_testcase"]):
-            code_context = ""
-            for r in st.session_state.review_results:
-                if "file" in r and "review" in r:
-                    code_context += f"File: {r['file']}\n{r['review'][0].get('summary', '')[:1000]}\n"
-
-            prompt = f"""
-Generate detailed and practical test cases for the reviewed code below.
-Include both **normal** and **edge cases**, and format the result as a JSON list.
-Code context:
-{code_context}
-"""
-
-            result = summarize_with_llm([
-                {"role": "system", "content": "You are an expert QA engineer specializing in software test case design."},
-                {"role": "user", "content": prompt}
-            ])
-            try:
-                parsed = json.loads(result)
-            except:
-                parsed = [{"description": "Raw output", "input": "", "expected_output": result}]
-            st.session_state.test_cases.extend(parsed)
-            st.success(T["testcase_success"])
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": T["testcase_added"]
-            })
-            st.rerun()

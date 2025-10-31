@@ -10,12 +10,11 @@ from PIL import Image
 # =========================================
 load_dotenv()
 
-# ⚙️ Client cho STU Platform proxy
 client = OpenAI(
     base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
 )
-MODEL = "gpt-4o-mini"  # hoặc model mà server của bạn hỗ trợ
+MODEL = "gpt-4o-mini"  # hoặc model vision mà server của bạn hỗ trợ
 
 # =========================================
 # CHUNK TEXT / CODE
@@ -25,8 +24,6 @@ def _chunk_fallback(text: str, chunk_size: int = 3000):
     text = text or ""
     return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
-
-# ✅ Ưu tiên dùng tree-sitter trong utils/chunk_utils.py
 try:
     from utils.chunk_utils import chunk_text as _chunk_by_language
 
@@ -39,7 +36,6 @@ try:
             return _chunk_fallback(text, max_chunk_size)
 except ImportError:
     def chunk_text(text: str, ext: str = ".py", max_chunk_size: int = 3000):
-        """Fallback nếu không import được chunk_utils."""
         return _chunk_fallback(text, max_chunk_size)
 
 
@@ -77,7 +73,7 @@ def run_command(command: str, cwd: str = None):
 # LLM CALL (STU Proxy / OpenAI API)
 # =========================================
 def summarize_with_llm(messages: list[dict]):
-    """Gửi danh sách messages đến LLM qua STU proxy."""
+    """Gửi danh sách messages đến LLM qua proxy hoặc Azure."""
     try:
         response = client.chat.completions.create(
             model=MODEL,
@@ -101,3 +97,59 @@ def extract_text_from_image(uploaded_image):
         return text.strip()
     except Exception as e:
         return f"⚠️ Lỗi OCR: {e}"
+
+
+# =========================================
+# PHÂN TÍCH ẢNH BẰNG AI (VISION)
+# =========================================
+def analyze_image_with_llm(image_path):
+    """
+    Phân tích ảnh bằng model có vision:
+    - Mô tả nội dung ảnh
+    - Nếu phát hiện code, trích ra code text
+    """
+    try:
+        from base64 import b64encode
+
+        with open(image_path, "rb") as f:
+            img_base64 = b64encode(f.read()).decode("utf-8")
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Bạn là chuyên gia phân tích hình ảnh phần mềm, UI và code. "
+                    "Nếu trong ảnh có đoạn code (dù là ảnh chụp màn hình), "
+                    "hãy trích xuất chính xác đoạn code đó ra text. "
+                    "Nếu không có code, chỉ cần mô tả nội dung ảnh."
+                )
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Phân tích và trích xuất code từ ảnh này nếu có:"},
+                    {"type": "image_url", "image_url": f"data:image/png;base64,{img_base64}"}
+                ]
+            }
+        ]
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # hoặc model vision khác
+            messages=messages,
+            temperature=0.3,
+            max_tokens=2000
+        )
+
+        ai_result = response.choices[0].message.content.strip()
+
+        # ✅ Nếu AI phát hiện đoạn code, tách riêng ra cho dễ dùng
+        if "```" in ai_result:
+            import re
+            code_blocks = re.findall(r"```[a-zA-Z0-9]*\n([\s\S]*?)```", ai_result)
+            if code_blocks:
+                code_text = "\n\n".join(code_blocks).strip()
+                return f"### 🧠 AI nhận diện code từ ảnh:\n```{code_text}```"
+        return f"### 🧠 Phân tích ảnh:\n{ai_result}"
+
+    except Exception as e:
+        return f"⚠️ Lỗi khi phân tích ảnh bằng AI: {e}"
