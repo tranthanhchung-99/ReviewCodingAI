@@ -97,27 +97,34 @@ Sau khi review, bạn có thể:
 ## 🗂️ Cấu trúc thư mục dự án
 
 REVIEWCODINGAI/
+
 └── BugBusters/
+
 ├── src/
+
 │ └── main.py # Giao diện chính (Streamlit)
+
 ├── utils/
+
 │ ├── utils.py # OCR, OpenAI call, xử lý text/code
+
 │ ├── chunk_utils.py # Tree-sitter chia code thông minh
+
 │ ├── convention_util.py # Đọc & quản lý file coding convention
+
 │ └── LANGUAGES.py # Đa ngôn ngữ giao diện
+
 ├── .env # Chứa API key & endpoint Azure OpenAI
+
 ├── setup_env.txt # Thư viện cần cài
+
 └── README.md
 
 ---
 
-## ⚙️ Cài đặt môi trường
+## ⚙️ Cài đặt môi trường và chạy
 
 ```bash
 pip install -r setup_env.txt
-
-
----
-
-## 🚀 Chạy ứng dụng
 streamlit run BugBusters/src/main.py
+
