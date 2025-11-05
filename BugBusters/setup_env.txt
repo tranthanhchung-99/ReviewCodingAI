@@ -1,13 +1,23 @@
-# Core dependencies
+# --- Core ---
 streamlit
+python-dotenv
 openai>=1.6.0
 flake8
 pytest
+watchdog
+
+# --- OCR & Image ---
 pytesseract
 pillow
-watchdog
-python-dotenv
 
-# Tree-sitter for multi-language code parsing
+# --- Excel & Data ---
+pandas
+openpyxl
+xlrd
+
+# --- Code Parsing ---
 tree-sitter==0.20.4
 tree-sitter-languages==1.10.2
+
+# --- Optional Utilities ---
+requests

@@ -6,7 +6,8 @@
 
 LANGUAGES = {
     "vi": {
-        "upload": "Tải lên file / ZIP / Ảnh",
+        "upload": "Tải lên file cần review",
+        "upload_req": "Tải lên file requirement",
         "start_review": "Bắt đầu Review",
         "clear_chat": "Xóa Chat",
         "generate_test": "Sinh Test Case",
@@ -40,7 +41,8 @@ LANGUAGES = {
         ),
     },
     "en": {
-        "upload": "Upload file / ZIP / Image",
+        "upload": "Upload file to review",
+        "upload_req": "Upload file requirement",
         "start_review": "Start Review",
         "clear_chat": "Clear Chat",
         "generate_test": "Generate Test Case",

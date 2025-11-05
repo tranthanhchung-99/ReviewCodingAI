@@ -1,32 +1,28 @@
-import sys, os
+import sys, os, tempfile, zipfile, json
 from pathlib import Path
+import streamlit as st
+import pandas as pd
+from openai import AzureOpenAI
+from dotenv import load_dotenv
 
-# =========================================
-# 🔧 FIX: thêm thư mục gốc dự án vào PYTHONPATH
-# =========================================
+# =========================
+# 🔧 PATH FIX
+# =========================
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 print("✅ Added to sys.path:", BASE_DIR)
 
-# =========================================
+# =========================
 # IMPORTS
-# =========================================
-import tempfile
-import zipfile
-import json
-import streamlit as st
-from openai import AzureOpenAI
-from dotenv import load_dotenv
-
-# ✅ Import từ utils (đã hỗ trợ OCR + Vision)
-from utils.chunk_utils import chunk_text
+# =========================
 from utils.utils import (
     safe_read_text,
     run_command,
     summarize_with_llm,
     extract_text_from_image,
-    analyze_image_with_llm
+    analyze_image_with_llm,
+    chunk_text
 )
 from utils.LANGUAGES import LANGUAGES
 
@@ -34,15 +30,13 @@ from utils.LANGUAGES import LANGUAGES
 # CONFIG
 # =========================
 load_dotenv()
-
 client = AzureOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
     api_version="2024-02-01"
 )
-
 MODEL = "gpt-4o-mini"
-MAX_FILE_SIZE = 100_000  # ký tự
+MAX_FILE_SIZE = 100_000
 
 st.set_page_config(page_title="💬 Bug Busters", layout="wide")
 
@@ -59,100 +53,66 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "review_results" not in st.session_state:
     st.session_state.review_results = []
-if "test_cases" not in st.session_state:
-    st.session_state.test_cases = []
+if "coding_rules" not in st.session_state:
+    st.session_state.coding_rules = []
 
 # =========================
 # SIDEBAR
 # =========================
 st.sidebar.markdown("## ⚙️ Settings")
+
 upload = st.sidebar.file_uploader(
-    T["upload"],
-    type=["zip", "py", "js", "java", "ts", "png", "jpg", "jpeg"]
+    T["upload"], type=["zip", "py", "js", "java", "ts", "cpp", "c", "html", "css", "png", "jpg"]
+)
+convention_file = st.sidebar.file_uploader(
+    T["upload_req"], type=["xlsx", "xls"]
 )
 reviewer_type = st.sidebar.selectbox("Reviewer Mode", [
-    "Mentor (Giải thích dễ hiểu)",
-    "Senior Dev (Phân tích chuyên sâu)",
-    "Security Expert (Bảo mật)",
-    "Style Checker (Code format)"
+    "Style Checker",
+    "Performance Expert",
+    "Free Review"
 ])
+
 run_btn = st.sidebar.button(T["start_review"], use_container_width=True)
 clear_btn = st.sidebar.button(T["clear_chat"], use_container_width=True)
-generate_tests_btn = st.sidebar.button(T["generate_test"], use_container_width=True)
 
 # =========================
-# TAB STYLE (HEADER FIX)
+# LOAD CONVENTION FILE
+# =========================
+if convention_file:
+    try:
+        df = pd.read_excel(convention_file)
+        st.session_state.coding_rules = df.to_dict(orient="records")
+        st.sidebar.success(f"📘 Đã tải {len(df)} quy tắc từ file convention.")
+    except Exception as e:
+        st.sidebar.error(f"❌ Lỗi đọc file convention: {e}")
+
+# =========================
+# STYLE
 # =========================
 st.markdown("""
     <style>
-    div[role="tablist"] {
-        position: fixed !important;
-        top:50px;
-        background-color: white;
-        z-index: 9999;
-        padding-top: 10px;
-        width: 100%
-    }
+        header[data-testid="stHeader"] div[role="banner"] div:nth-child(1) {visibility: hidden !important;}
+        footer {visibility: hidden !important;}
+        #MainMenu {visibility: hidden !important;}
     </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# TAB SETUP
+# MAIN AREA
 # =========================
-tab1, tab2 = st.tabs([T["chat_tab"], T["testcase_tab"]])
+for msg in st.session_state.chat_history:
+    avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
+    with st.chat_message(msg["role"], avatar=avatar):
+        st.markdown(msg["content"])
 
-# =========================
-# TAB 1 — REVIEW / CHAT
-# =========================
-with tab1:
-    for msg in st.session_state.chat_history:
-        avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
-
-    if st.session_state.review_results:
-        for r in st.session_state.review_results:
-            st.markdown(f"### 📄 {T['file']}: {r['file']}")
-            for idx, review in enumerate(r["review"], 1):
-                st.markdown(f"**{T['chunk']} {idx}:** {review.get('summary', '')}")
-                if review.get('issues'):
-                    for i, iss in enumerate(review['issues'], 1):
-                        with st.expander(f"{T['error']} #{i}"):
-                            st.write(iss)
-                else:
-                    st.success(T["no_issue"])
-                if review.get('suggested_code'):
-                    st.code(review['suggested_code'], language="python")
-
-# =========================
-# TAB 2 — TEST CASE
-# =========================
-with tab2:
-    st.markdown(T["testcase_history"])
-    if not st.session_state.test_cases:
-        st.info(T["no_testcase"])
-    else:
-        for i, tc in enumerate(st.session_state.test_cases, 1):
-            with st.expander(f"{T['testcase']} #{i}: {tc.get('description', '')[:60]}"):
-                st.json(tc)
-        test_json = json.dumps(st.session_state.test_cases, ensure_ascii=False, indent=2)
-        st.download_button(
-            label=T["download_testcase"],
-            data=test_json,
-            file_name="test_cases.json",
-            mime="application/json"
-        )
-
-# =========================
-# CLEAR CHAT
-# =========================
 if clear_btn:
     st.session_state.chat_history.clear()
     st.session_state.review_results.clear()
     st.rerun()
 
 # =========================
-# XỬ LÝ FILE UPLOAD & REVIEW
+# REVIEW HANDLER
 # =========================
 if run_btn and upload:
     with st.spinner(T["processing_file"]):
@@ -160,79 +120,21 @@ if run_btn and upload:
         files_to_review = []
         extracted_texts = []
 
-        # 🖼️ Nếu là ảnh → OCR + Vision + phục hồi code
+        # 🖼️ IMAGE HANDLING
         if upload.type.startswith("image/"):
-            st.info("🖼️ Ảnh được phát hiện — đang trích xuất nội dung...")
-
+            st.info("🖼️ Đang trích xuất code từ ảnh...")
             raw_text = extract_text_from_image(upload)
-            if not raw_text.strip():
-                st.error("⚠️ Không tìm thấy nội dung nào trong ảnh.")
-            else:
-                st.info("📄 Text OCR được trích xuất:")
-                st.code(raw_text[:800], language="markdown")
+            st.code(raw_text[:500], language="markdown")
 
-            # Lưu ảnh tạm để AI vision đọc
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
                 tmp_img.write(upload.getvalue())
                 tmp_img_path = tmp_img.name
 
-            # Vision model phân tích ảnh
             ai_analysis = analyze_image_with_llm(tmp_img_path)
-            st.info("🤖 Phân tích AI (Vision model):")
             st.markdown(ai_analysis)
-
-            # Dùng LLM để làm sạch và khôi phục code từ OCR
-            st.info("🧩 Đang phục hồi code từ ảnh...")
-            clean_prompt = f"""
-Dưới đây là phần text được trích xuất bằng OCR từ ảnh:
-
-Hãy:
-1. Nhận diện phần code có trong nội dung (nếu có).
-2. Sửa các lỗi OCR như ký tự sai, thiếu dấu ngoặc, indent hỏng.
-3. Giữ nguyên định dạng và comment.
-4. Trả về **chỉ đoạn code sạch**, không thêm mô tả hay lời giải thích.
-"""
-            cleaned_code = summarize_with_llm([
-                {"role": "system", "content": "Bạn là chuyên gia phục hồi code từ ảnh chụp."},
-                {"role": "user", "content": clean_prompt + "\n\n" + raw_text}
-            ])
-
-            # 🔍 Đoán ngôn ngữ code và gán phần mở rộng hợp lệ
-            detected_lang = "python"
-            ext_map = {
-                "python": ".py",
-                "java": ".java",
-                "cpp": ".cpp",
-                "javascript": ".js",
-                "html": ".html"
-            }
-            lc = cleaned_code.lower()
-            if "public class" in lc or "system.out.println" in lc:
-                detected_lang = "java"
-            elif "#include" in lc or "printf(" in lc:
-                detected_lang = "cpp"
-            elif "function" in lc or "const" in lc:
-                detected_lang = "javascript"
-            elif "<html" in lc:
-                detected_lang = "html"
-
-            file_ext = ext_map.get(detected_lang, ".py")
-
-            # 💡 In ra code nhận diện được
-            st.success(f"✅ Code được nhận diện ({detected_lang}):")
-            st.code(cleaned_code, language=detected_lang)
-
-            # Thêm vào danh sách review
-            extracted_texts.append({
-                "filename": f"{upload.name}_ocr{file_ext}",
-                "content": cleaned_code
-            })
-            st.success("🎯 Code trong ảnh đã sẵn sàng để review!")
+            extracted_texts.append({"filename": f"{upload.name}_ocr.py", "content": raw_text})
 
         else:
-            # =========================
-            # FILE CODE HOẶC ZIP
-            # =========================
             save_path = tmp / upload.name
             with open(save_path, "wb") as f:
                 f.write(upload.getbuffer())
@@ -246,66 +148,118 @@ Hãy:
             else:
                 files_to_review.append(save_path)
 
-        # =========================
-        # DUYỆT CÁC FILE VÀ REVIEW
-        # =========================
         results = []
+        convention_text = "\n".join([
+            f"- {r.get('Rule', '')}: {r.get('Description', '')}"
+            for r in st.session_state.coding_rules if r.get('Rule')
+        ]) if st.session_state.coding_rules else ""
+
         for f in files_to_review or extracted_texts:
-            if isinstance(f, dict):  # OCR từ ảnh
+            if isinstance(f, dict):
                 fname = f["filename"]
                 content = f["content"]
                 linter_out = "(Không áp dụng cho ảnh)"
             else:
                 fname = f.name
                 content = safe_read_text(f)
-                linter_out = ""
-                if len(content) > MAX_FILE_SIZE:
-                    st.warning(T["file_large"].format(size=len(content)))
-                    content = content[:MAX_FILE_SIZE]
-                st.code(content[:1000], language=f.suffix.replace('.', ''))
+                _, out, err = run_command(f"flake8 {f}", cwd=tmp)
+                linter_out = (out + "\n" + err).strip() or T["no_issue"]
 
-                if f.suffix == ".py":
-                    _, out, err = run_command(f"flake8 {f}", cwd=tmp)
-                    linter_out = (out + "\n" + err).strip() or T["no_issue"]
-
-            file_ext = os.path.splitext(fname)[1].lower()
-            if file_ext in [".png", ".jpg", ".jpeg"]:
-                chunks = [content]
-            else:
-                chunks = chunk_text(content, ext=file_ext)
-
+            chunks = chunk_text(content, ext=os.path.splitext(fname)[1])
             review_chunk_results = []
+            violated_rules = []
+
             for idx, chunk in enumerate(chunks):
-                prompt = f"""
-Bạn là reviewer code. Hãy phân tích phần {idx+1}/{len(chunks)} trong file {fname}.
-Linter output: {linter_out}
-Code hoặc nội dung:
+                if reviewer_type == "Style Checker":
+                    prompt = f"""
+Bạn là chuyên gia kiểm tra coding convention.
+Dựa theo file quy tắc sau:
+{convention_text if convention_text else "(Không có quy tắc cụ thể)"}
+
+Code cần review (phần {idx+1} của {fname}):
 {chunk}
-Hãy trả về JSON gồm: summary, issues[], suggested_code (nếu có).
+
+Hãy trả về JSON:
+{{
+ "summary": "...",
+ "issues": ["..."],
+ "suggested_code": "..."
+}}
 """
-                system_prompt = {
-                    "Mentor (Giải thích dễ hiểu)": "Bạn là mentor, hãy giải thích code dễ hiểu cho người mới.",
-                    "Senior Dev (Phân tích chuyên sâu)": "Bạn là senior developer, hãy phân tích code chi tiết.",
-                    "Security Expert (Bảo mật)": "Bạn là chuyên gia bảo mật, hãy tập trung vào các điểm yếu.",
-                    "Style Checker (Code format)": "Bạn là chuyên gia kiểm tra format code."
-                }[reviewer_type]
+                elif reviewer_type == "Performance Expert":
+                    prompt = f"""
+Bạn là chuyên gia phân tích code nâng cao (logic, hiệu năng, bảo mật).
+Không cần xét convention.
+
+Code cần review (phần {idx+1} của {fname}):
+{chunk}
+
+Hãy trả về JSON:
+{{
+ "summary": "...",
+ "issues": ["..."],
+ "suggested_code": "..."
+}}
+"""
+                else:
+                    prompt = f"""
+Bạn là trợ lý AI. Hãy đọc đoạn code sau và nhận xét tự nhiên, không cần JSON.
+{chunk}
+"""
 
                 response = summarize_with_llm([
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": "Bạn là chuyên gia review code."},
                     {"role": "user", "content": prompt}
                 ])
 
                 try:
                     parsed = json.loads(response)
                 except:
-                    parsed = {"summary": response}
+                    parsed = {"summary": response, "issues": [], "suggested_code": ""}
+
+                # Kiểm tra rule nào bị vi phạm
+                if reviewer_type == "Style Checker" and st.session_state.coding_rules:
+                    for rule in st.session_state.coding_rules:
+                        keyword = str(rule.get("Keyword", "")).strip()
+                        if keyword and keyword in chunk:
+                            violated_rules.append(rule)
+
                 review_chunk_results.append(parsed)
 
-            results.append({"file": fname, "review": review_chunk_results})
+            results.append({"file": fname, "violated_rules": violated_rules, "review": review_chunk_results})
 
         st.session_state.review_results = results
-        st.session_state.chat_history.append({
-            "role": "assistant",
-            "content": T["review_done"]
-        })
+        st.session_state.chat_history.append({"role": "assistant", "content": T["review_done"]})
         st.rerun()
+
+# =========================
+# HIỂN THỊ KẾT QUẢ REVIEW
+# =========================
+if st.session_state.review_results:
+    for r in st.session_state.review_results:
+        st.markdown(f"### 📄 File: {r['file']}")
+        if r.get("violated_rules"):
+            st.warning("⚠️ Các quy tắc convention bị vi phạm:")
+            st.dataframe(pd.DataFrame(r["violated_rules"]))
+        for idx, rev in enumerate(r["review"], 1):
+            st.markdown(f"**Phần {idx}:** {rev.get('summary', '')}")
+            if rev.get("issues"):
+                for i, issue in enumerate(rev["issues"], 1):
+                    st.markdown(f"- ❌ {issue}")
+            if rev.get("suggested_code"):
+                st.code(rev["suggested_code"], language="python")
+
+# =========================
+# CHAT
+# =========================
+user_input = st.chat_input(T["ask_ai"])
+if user_input:
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
+    context = "\n".join([r["file"] for r in st.session_state.review_results]) if st.session_state.review_results else ""
+    messages = [
+        {"role": "system", "content": "Bạn là AI hỗ trợ review code."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion:\n{user_input}"}
+    ]
+    ans = summarize_with_llm(messages)
+    st.session_state.chat_history.append({"role": "assistant", "content": ans})
+    st.rerun()
